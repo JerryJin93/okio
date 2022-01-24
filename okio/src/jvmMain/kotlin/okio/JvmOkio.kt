@@ -60,6 +60,7 @@ private class OutputStreamSink(
       remaining -= toCopy
       source.size -= toCopy
 
+      // When all data are read in this particular head.
       if (head.pos == head.limit) {
         source.head = head.pop()
         SegmentPool.recycle(head)
@@ -89,10 +90,14 @@ private open class InputStreamSource(
     require(byteCount >= 0L) { "byteCount < 0: $byteCount" }
     try {
       timeout.throwIfReached()
+      // We read data from a input stream and write to the tail of the given buffer.
       val tail = sink.writableSegment(1)
       val maxToCopy = minOf(byteCount, Segment.SIZE - tail.limit).toInt()
+      // read the data to the ByteArray field in tail.
       val bytesRead = input.read(tail.data, tail.limit, maxToCopy)
+      // We've arrived at the end of the file.
       if (bytesRead == -1) {
+        // When all data are read in tail.
         if (tail.pos == tail.limit) {
           // We allocated a tail segment, but didn't end up needing it. Recycle!
           sink.head = tail.pop()

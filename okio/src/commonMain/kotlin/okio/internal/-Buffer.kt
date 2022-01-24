@@ -558,6 +558,7 @@ internal inline fun Buffer.commonWritableSegment(minimumCapacity: Int): Segment 
   if (head == null) {
     val result = SegmentPool.take() // Acquire a first segment.
     head = result
+    // to construct a circularly-linked list.
     result.prev = result
     result.next = result
     return result

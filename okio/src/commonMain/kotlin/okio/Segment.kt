@@ -122,6 +122,7 @@ internal class Segment {
    * Returns the new head of the circularly-linked list.
    */
   fun split(byteCount: Int): Segment {
+    // To check the argument is whether valid or not.
     require(byteCount > 0 && byteCount <= limit - pos) { "byteCount out of range" }
     val prefix: Segment
 
@@ -131,9 +132,11 @@ internal class Segment {
     //    may lead to long chains of short segments.
     // To balance these goals we only share segments when the copy will be large.
     if (byteCount >= SHARE_MINIMUM) {
+      // copy a new Segment that shared the data field with the current one.
       prefix = sharedCopy()
     } else {
       prefix = SegmentPool.take()
+      // copy [pos, pos + byteCount) to the given prefix.
       data.copyInto(prefix.data, startIndex = pos, endIndex = pos + byteCount)
     }
 
