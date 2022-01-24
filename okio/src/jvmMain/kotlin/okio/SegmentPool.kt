@@ -100,6 +100,7 @@ internal actual object SegmentPool {
   @JvmStatic
   actual fun recycle(segment: Segment) {
     require(segment.next == null && segment.prev == null)
+    // 标记为shared的Segment无法被回收
     if (segment.shared) return // This segment cannot be recycled.
 
     val firstRef = firstRef()
@@ -121,6 +122,18 @@ internal actual object SegmentPool {
 
   private fun firstRef(): AtomicReference<Segment?> {
     // Get a value in [0..HASH_BUCKET_COUNT) based on the current thread.
+
+    // HASH_BUCKED_COUNT = pow(2, n)
+
+    // 这里的and计算相当于模运算，因为(HASH_BUCKET_COUNT - 1)的结果用bit表示与HASH_BUCKET_COUNT
+    // 的bit表示相比，除最高位为0之外其他都为1，这样按位与的结果就相当于模运算了
+    // 例如：
+    //    28    %     8     =     4
+    // 00011100 & 0000 0111 = 0000 0100 = 4
+
+    // e.g.
+    // HASH_BUCKED_COUNT = 8, id = 135 => 135 % 7 = 8
+    // hash散列表
     val hashBucket = (Thread.currentThread().id and (HASH_BUCKET_COUNT - 1L)).toInt()
     return hashBuckets[hashBucket]
   }

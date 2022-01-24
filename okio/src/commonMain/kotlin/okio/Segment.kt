@@ -35,9 +35,13 @@ import kotlin.jvm.JvmField
 internal class Segment {
   @JvmField val data: ByteArray
 
+  // data的首个可读数据的偏移位置
   /** The next byte of application data byte to read in this segment. */
   @JvmField var pos: Int = 0
 
+  // data的首个可写数据的偏移位置
+  // 个人理解，则data的剩余为写入的数据长度为：data.size - limit
+  // 如果此Segment在SegmentPool中，则limit表示从当前Segment到之后的Segment的所有数据的长度之和
   /**
    * The first byte of available data ready to be written to.
    *
@@ -146,10 +150,14 @@ internal class Segment {
   fun compact() {
     check(prev !== this) { "cannot compact" }
     if (!prev!!.owner) return // Cannot compact: prev isn't writable.
+    // 当前Segment的剩余未读数据长度
     val byteCount = limit - pos
     val availableByteCount = SIZE - prev!!.limit + if (prev!!.shared) 0 else prev!!.pos
+    // 剩余空间不够写入数据
     if (byteCount > availableByteCount) return // Cannot compact: not enough writable space.
+    // 把当前的数据写到前一个Segment节点
     writeTo(prev!!, byteCount)
+    // pop & recycle
     pop()
     SegmentPool.recycle(this)
   }
@@ -157,24 +165,46 @@ internal class Segment {
   /** Moves `byteCount` bytes from this segment to `sink`.  */
   fun writeTo(sink: Segment, byteCount: Int) {
     check(sink.owner) { "only owner can write" }
+    // 超出sink的最大数据长度
     if (sink.limit + byteCount > SIZE) {
       // We can't fit byteCount bytes at the sink's current position. Shift sink first.
       if (sink.shared) throw IllegalArgumentException()
       if (sink.limit + byteCount - sink.pos > SIZE) throw IllegalArgumentException()
+      // 丢弃已读数据，向前移动数据
       sink.data.copyInto(sink.data, startIndex = sink.pos, endIndex = sink.limit)
       sink.limit -= sink.pos
       sink.pos = 0
     }
 
+    // 把当前Segment的数据写入到sink
+    // 从sink的limit位置开始
     data.copyInto(
       sink.data, destinationOffset = sink.limit, startIndex = pos,
       endIndex = pos + byteCount
     )
+    // 更新sink的limit
     sink.limit += byteCount
+    // 更新当前Segment的首个可读数据的偏移地址
     pos += byteCount
+
+    /**
+     * 总结写入流程：
+     * 首先设目标Segment为t，写入数据的长度为byteCount
+     * 1. 只有owner才可以写入
+     * 2. 写入数据到t前判断，若其剩余长度不够写入，即byteCount + t.limit > SIZE，则尝试移动t的数据：
+     *
+     *    如果t是共享的，则不能向前移动，throw IllegalArgumentException()
+     *    如果t.limit - t.pos + byteCount > SIZE，则无法移动 -> throw IllegalStateException
+     *
+     *    否则把t中[pos, limit]的数据移动到[0, SIZE]处，也就是向前移动(因为pos之前的数据已经被读取了)
+     *    t.pos = 0 t.limit -= t.pos
+     *
+     * 3. 写入数据到t
+     */
   }
 
   companion object {
+    // Segment的最大数据长度
     /** The size of all segments in bytes.  */
     const val SIZE = 8192
 
