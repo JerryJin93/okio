@@ -44,6 +44,7 @@ internal actual object SegmentPool {
   // TODO: Is 64 KiB a good maximum size? Do we ever have that many idle segments?
   actual val MAX_SIZE = 64 * 1024 // 64 KiB.
 
+  // Singleton, this is equivalent to the static field in the Singleton class in Java.
   /** A sentinel segment to indicate that the linked list is currently being modified. */
   private val LOCK = Segment(ByteArray(0), pos = 0, limit = 0, shared = false, owner = false)
 
@@ -72,10 +73,14 @@ internal actual object SegmentPool {
       return first.limit
     }
 
+  /**
+   * Just like Handler#obtain, retrieve the element from head.
+   */
   @JvmStatic
   actual fun take(): Segment {
     val firstRef = firstRef()
 
+    // Atomically sets to the LOCK and returns the old value.
     val first = firstRef.getAndSet(LOCK)
     when {
       first === LOCK -> {
@@ -110,16 +115,21 @@ internal actual object SegmentPool {
     val firstLimit = first?.limit ?: 0
     if (firstLimit >= MAX_SIZE) return // Pool is full.
 
+    // recycle to the head.
     segment.next = first
     segment.pos = 0
     segment.limit = firstLimit + Segment.SIZE
 
+    // Not to recycle the segment when CAS operation fails.
     // If we lost a race with another operation, don't recycle this segment.
     if (!firstRef.compareAndSet(first, segment)) {
       segment.next = null // Don't leak a reference in the pool either!
     }
   }
 
+  /**
+   * 根据当前线程id找到响应的hash bucket
+   */
   private fun firstRef(): AtomicReference<Segment?> {
     // Get a value in [0..HASH_BUCKET_COUNT) based on the current thread.
 
