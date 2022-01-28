@@ -39,7 +39,7 @@ internal class Segment {
   /** The next byte of application data byte to read in this segment. */
   @JvmField var pos: Int = 0
 
-  // data的首个可写数据的偏移位置
+  // data的首个可写数据的偏移位置，可表示已写入的数据长度
   // 个人理解，则data的剩余为写入的数据长度为：data.size - limit
   // 如果此Segment在SegmentPool中，则limit表示从当前Segment到之后的Segment的所有数据的长度之和
   /**
@@ -155,6 +155,7 @@ internal class Segment {
     if (!prev!!.owner) return // Cannot compact: prev isn't writable.
     // 当前Segment的剩余未读数据长度
     val byteCount = limit - pos
+    // 前一个Segment节点未写数据+已读数据长度之和
     val availableByteCount = SIZE - prev!!.limit + if (prev!!.shared) 0 else prev!!.pos
     // 剩余空间不够写入数据
     if (byteCount > availableByteCount) return // Cannot compact: not enough writable space.
