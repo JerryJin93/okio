@@ -16,6 +16,7 @@
 package okio
 
 import kotlinx.datetime.Instant
+import okio.ByteString.Companion.decodeHex
 import okio.ByteString.Companion.encodeUtf8
 import okio.Path.Companion.toPath
 import org.assertj.core.api.Assertions.assertThat
@@ -30,6 +31,31 @@ class ZipFileSystemTest {
   @Before
   fun setUp() {
     fileSystem.createDirectory(base)
+  }
+
+  @Test
+  fun emptyZip() {
+    // ZipBuilder cannot write empty zips.
+    val zipPath = base / "empty.zip"
+    fileSystem.write(zipPath) {
+      write("504b0506000000000000000000000000000000000000".decodeHex())
+    }
+
+    val zipFileSystem = fileSystem.openZip(zipPath)
+    assertThat(zipFileSystem.list("/".toPath())).isEmpty()
+  }
+
+  @Test
+  fun emptyZipWithPrependedData() {
+    // ZipBuilder cannot write empty zips.
+    val zipPath = base / "empty.zip"
+    fileSystem.write(zipPath) {
+      writeUtf8("Hello I'm junk data prepended to the ZIP!")
+      write("504b0506000000000000000000000000000000000000".decodeHex())
+    }
+
+    val zipFileSystem = fileSystem.openZip(zipPath)
+    assertThat(zipFileSystem.list("/".toPath())).isEmpty()
   }
 
   @Test
@@ -415,6 +441,38 @@ class ZipFileSystemTest {
       .isEqualTo("This is the second hello.txt")
     assertThat(zipFileSystem.list("/".toPath()))
       .containsExactly("/hello.txt".toPath())
+  }
+
+  @Test
+  fun canonicalizationValid() {
+    val zipPath = ZipBuilder(base)
+      .addEntry("hello.txt", "Hello World")
+      .addEntry("directory/child.txt", "Another file!")
+      .build()
+    val zipFileSystem = fileSystem.openZip(zipPath)
+
+    assertThat(zipFileSystem.canonicalize("/".toPath())).isEqualTo("/".toPath())
+    assertThat(zipFileSystem.canonicalize(".".toPath())).isEqualTo("/".toPath())
+    assertThat(zipFileSystem.canonicalize("not/a/path/../../..".toPath())).isEqualTo("/".toPath())
+    assertThat(zipFileSystem.canonicalize("hello.txt".toPath())).isEqualTo("/hello.txt".toPath())
+    assertThat(zipFileSystem.canonicalize("stuff/../hello.txt".toPath())).isEqualTo("/hello.txt".toPath())
+    assertThat(zipFileSystem.canonicalize("directory".toPath())).isEqualTo("/directory".toPath())
+    assertThat(zipFileSystem.canonicalize("directory/whevs/..".toPath())).isEqualTo("/directory".toPath())
+    assertThat(zipFileSystem.canonicalize("directory/child.txt".toPath())).isEqualTo("/directory/child.txt".toPath())
+    assertThat(zipFileSystem.canonicalize("directory/whevs/../child.txt".toPath())).isEqualTo("/directory/child.txt".toPath())
+  }
+
+  @Test
+  fun canonicalizationInvalidThrows() {
+    val zipPath = ZipBuilder(base)
+      .addEntry("hello.txt", "Hello World")
+      .addEntry("directory/child.txt", "Another file!")
+      .build()
+    val zipFileSystem = fileSystem.openZip(zipPath)
+
+    assertFailsWith<FileNotFoundException> {
+      zipFileSystem.canonicalize("not/a/path".toPath())
+    }
   }
 }
 
