@@ -35,7 +35,7 @@ import kotlin.jvm.JvmField
 internal class Segment {
   @JvmField val data: ByteArray
 
-  // data的首个可读数据的偏移位置
+  // data的首个可读数据的偏移位置，同时也表示已读数据的长度，设计非常巧妙，类似Java nio
   /** The next byte of application data byte to read in this segment. */
   @JvmField var pos: Int = 0
 
