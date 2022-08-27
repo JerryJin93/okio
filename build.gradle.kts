@@ -2,6 +2,8 @@ import aQute.bnd.gradle.BundleTaskConvention
 import com.diffplug.gradle.spotless.SpotlessExtension
 import com.vanniktech.maven.publish.MavenPublishBaseExtension
 import com.vanniktech.maven.publish.SonatypeHost
+import groovy.util.Node
+import groovy.util.NodeList
 import java.nio.charset.StandardCharsets
 import org.gradle.api.tasks.testing.logging.TestExceptionFormat
 import org.gradle.api.tasks.testing.logging.TestLogEvent.FAILED
@@ -17,17 +19,17 @@ plugins {
 
 buildscript {
   dependencies {
-    classpath(deps.android.gradlePlugin)
-    classpath(deps.animalSniffer.gradlePlugin)
-    classpath(deps.japicmp)
-    classpath(deps.dokka)
-    classpath(deps.shadow)
-    classpath(deps.jmh.gradlePlugin)
-    classpath(deps.spotless)
-    classpath(deps.bnd)
+    classpath(libs.android.gradle.plugin)
+    classpath(libs.animalSniffer.gradle.plugin)
+    classpath(libs.japicmp)
+    classpath(libs.dokka)
+    classpath(libs.shadow)
+    classpath(libs.jmh.gradle.plugin)
+    classpath(libs.spotless)
+    classpath(libs.bnd)
     // https://github.com/melix/japicmp-gradle-plugin/issues/36
-    classpath(deps.guava)
-    classpath(deps.vanniktechPublishPlugin)
+    classpath(libs.guava)
+    classpath(libs.vanniktech.publish.plugin)
   }
 
   repositories {
@@ -87,6 +89,7 @@ allprojects {
   }
 
   plugins.withId("com.vanniktech.maven.publish.base") {
+    val publishingExtension = extensions.getByType(PublishingExtension::class.java)
     configure<MavenPublishBaseExtension> {
       publishToMavenCentral(SonatypeHost.S01)
       signAllPublications()
@@ -113,6 +116,31 @@ allprojects {
           }
         }
       }
+
+      // Configure the kotlinMultiplatform artifact to depend on the JVM artifact in pom.xml only.
+      // This hack allows Maven users to continue using our original Okio artifact names (like
+      // com.squareup.okio:okio:3.x.y) even though we changed that artifact from JVM-only to Kotlin
+      // Multiplatform. Note that module.json doesn't need this hack.
+      val mavenPublications = publishingExtension.publications.withType<MavenPublication>()
+      mavenPublications.configureEach {
+        if (name != "jvm") return@configureEach
+        val jvmPublication = this
+        val kmpPublication = mavenPublications.getByName("kotlinMultiplatform")
+        kmpPublication.pom.withXml {
+          val root = asNode()
+          val dependencies = (root["dependencies"] as NodeList).firstOrNull() as Node?
+            ?: root.appendNode("dependencies")
+          for (child in dependencies.children().toList()) {
+            dependencies.remove(child as Node)
+          }
+          dependencies.appendNode("dependency").apply {
+            appendNode("groupId", jvmPublication.groupId)
+            appendNode("artifactId", jvmPublication.artifactId)
+            appendNode("version", jvmPublication.version)
+            appendNode("scope", "compile")
+          }
+        }
+      }
     }
   }
 }
@@ -122,7 +150,7 @@ subprojects {
   configure<SpotlessExtension> {
     kotlin {
       target("**/*.kt")
-      ktlint(versions.ktlint).userData(mapOf("indent_size" to "2"))
+      ktlint(libs.versions.ktlint.get()).userData(mapOf("indent_size" to "2"))
       trimTrailingWhitespace()
       endWithNewline()
     }
@@ -147,6 +175,19 @@ subprojects {
       events(STARTED, PASSED, SKIPPED, FAILED)
       exceptionFormat = TestExceptionFormat.FULL
       showStandardStreams = false
+    }
+  }
+
+  tasks.withType<AbstractArchiveTask>().configureEach {
+    isPreserveFileTimestamps = false
+    isReproducibleFileOrder = true
+  }
+
+  normalization {
+    runtimeClasspath {
+      metaInf {
+        ignoreAttribute("Bnd-LastModified")
+      }
     }
   }
 }

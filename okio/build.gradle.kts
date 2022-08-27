@@ -76,16 +76,20 @@ kotlin {
     val commonMain by getting
     val commonTest by getting {
       dependencies {
-        implementation(deps.kotlin.test)
-        implementation(deps.kotlin.time)
+        implementation(libs.kotlin.test)
+        implementation(libs.kotlin.time)
 
-        implementation(project(":okio-fakefilesystem"))
-        implementation(project(":okio-testing-support"))
+        implementation(projects.okioFakefilesystem)
+        implementation(projects.okioTestingSupport)
       }
     }
 
     val hashFunctions by creating {
       dependsOn(commonMain)
+    }
+
+    val nonAppleMain by creating {
+      dependsOn(hashFunctions)
     }
 
     val nonJvmMain by creating {
@@ -98,20 +102,21 @@ kotlin {
 
     val jvmMain by getting {
       dependencies {
-        compileOnly(deps.animalSniffer.annotations)
+        compileOnly(libs.animalSniffer.annotations)
       }
     }
     val jvmTest by getting {
       kotlin.srcDir("src/jvmTest/hashFunctions")
       dependencies {
-        implementation(deps.test.junit)
-        implementation(deps.test.assertj)
+        implementation(libs.test.junit)
+        implementation(libs.test.assertj)
       }
     }
 
     if (kmpJsEnabled) {
       val jsMain by getting {
         dependsOn(nonJvmMain)
+        dependsOn(nonAppleMain)
       }
       val jsTest by getting {
         dependsOn(nonJvmTest)
@@ -121,10 +126,14 @@ kotlin {
     if (kmpNativeEnabled) {
       createSourceSet("nativeMain", parent = nonJvmMain)
         .also { nativeMain ->
-          createSourceSet("mingwMain", parent = nativeMain, children = mingwTargets)
+          createSourceSet("mingwMain", parent = nativeMain, children = mingwTargets).also { mingwMain ->
+            mingwMain.dependsOn(nonAppleMain)
+          }
           createSourceSet("unixMain", parent = nativeMain)
             .also { unixMain ->
-              createSourceSet("linuxMain", parent = unixMain, children = linuxTargets)
+              createSourceSet("linuxMain", parent = unixMain, children = linuxTargets).also { linuxMain ->
+                linuxMain.dependsOn(nonAppleMain)
+              }
               createSourceSet("appleMain", parent = unixMain, children = appleTargets)
             }
         }
@@ -176,8 +185,8 @@ configure<AnimalSnifferExtension> {
 val signature: Configuration by configurations
 
 dependencies {
-  signature(deps.animalSniffer.androidSignature)
-  signature(deps.animalSniffer.javaSignature)
+  signature(variantOf(libs.animalSniffer.android) { artifactType("signature") })
+  signature(variantOf(libs.animalSniffer.java) { artifactType("signature") })
 }
 
 configure<MavenPublishBaseExtension> {

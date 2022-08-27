@@ -24,11 +24,11 @@ val baseline: Configuration = configurations.create("baseline")
 val latest: Configuration = configurations.create("latest")
 
 dependencies {
-  baseline("com.squareup.okio:okio:1.14.1") {
+  baseline("com.squareup.okio:okio:1.17.5") {
     isTransitive = false
     isForce = true
   }
-  latest(project(":okio", "jvmRuntimeElements"))
+  latest(projects.okio) { targetConfiguration = "jvmRuntimeElements" }
 }
 
 val japicmp = tasks.register<JapicmpTask>("japicmp") {
